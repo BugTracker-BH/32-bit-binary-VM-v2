@@ -1,0 +1,60 @@
+name: Build qemu-ios-port Monorepo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-monorepo:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Clone all 6 source repos at repo root
+        run: |
+          set -euo pipefail
+
+          echo "==> utmapp/qemu (iOS-buildable QEMU fork, TCG-only)"
+          git clone --recurse-submodules https://github.com/utmapp/qemu.git utm-qemu
+          rm -rf utm-qemu/.git
+          find utm-qemu -name '.git' -exec rm -rf {} + 2>/dev/null || true
+
+          echo "==> utmapp/UTM (app shell + iOS build pipeline)"
+          git clone --recurse-submodules https://github.com/utmapp/UTM.git utm-app
+          rm -rf utm-app/.git
+          find utm-app -name '.git' -exec rm -rf {} + 2>/dev/null || true
+
+          echo "==> devos50/qemu-ios (iPod Touch device models)"
+          git clone https://github.com/devos50/qemu-ios.git devos50-qemu-ios
+          (
+            cd devos50-qemu-ios
+            git checkout ipod_touch_2g
+            git branch ipod_touch_1g_ref origin/ipod_touch_1g || true
+          )
+          rm -rf devos50-qemu-ios/.git
+
+          echo "==> devos50/qemu-ios-generate-nand"
+          git clone https://github.com/devos50/qemu-ios-generate-nand.git
+          rm -rf qemu-ios-generate-nand/.git
+
+          echo "==> devos50/qemu-ios-generate-nor"
+          git clone https://github.com/devos50/qemu-ios-generate-nor.git
+          rm -rf qemu-ios-generate-nor/.git
+
+          echo "==> opa334/TrollStore (signing/entitlement reference)"
+          git clone https://github.com/opa334/TrollStore.git
+          rm -rf TrollStore/.git
+
+          echo "==> Verifying actual file content landed (not just empty folders):"
+          for d in utm-qemu utm-app devos50-qemu-ios qemu-ios-generate-nand qemu-ios-generate-nor TrollStore; do
+            count=$(find "$d" -type f | wc -l)
+            echo "  $d: $count files"
+          done
+
+      - name: Commit repos back into this repo root
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A utm-qemu utm-app devos50-qemu-ios qemu-ios-generate-nand qemu-ios-generate-nor TrollStore
+          git commit -m "Add full file contents of all 6 source repos at repo root" || echo "Nothing to commit"
+          git push
